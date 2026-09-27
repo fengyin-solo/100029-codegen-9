@@ -2,8 +2,8 @@
   <section class="page" data-module="switchgear">
     <header class="page-head">
       <div>
-        <h2>开关站管理管理</h2>
-        <p class="page-desc">维护开关设备，围绕设备编号、设备名称、电压等级、所属电站做登记、筛选与状态流转。</p>
+        <h2>开关站管理</h2>
+        <p class="page-desc">维护开关设备，围绕设备编号、设备名称、电压等级、所属电站做登记、筛选与分合状态流转。</p>
       </div>
       <div class="page-actions">
         <button class="btn primary" type="button" @click="openCreate">登记开关设备</button>
@@ -36,17 +36,26 @@
       </thead>
       <tbody>
         <tr v-for="row in rows" :key="String(row.id)">
-          <td v-for="column in columns" :key="column">{{ row[column] ?? '—' }}</td>
+          <td v-for="column in columns" :key="column">
+            <RouterLink v-if="column === '设备编号'" class="link" :to="`/switchgear/${row.id}`">
+              {{ row[column] ?? '—' }}
+            </RouterLink>
+            <template v-else>{{ row[column] ?? '—' }}</template>
+          </td>
           <td class="row-actions">
-            <button
-              v-for="action in actions"
-              :key="action"
-              class="link"
-              type="button"
-              @click="runAction(action, row)"
-            >
-              {{ action }}
-            </button>
+            <template v-if="availableActions(row).length">
+              <button
+                v-for="action in availableActions(row)"
+                :key="action"
+                class="link"
+                type="button"
+                :disabled="busyId === row.id || !!actionError"
+                @click="runAction(action, row)"
+              >
+                {{ action }}
+              </button>
+            </template>
+            <span v-else class="muted-text">—</span>
           </td>
         </tr>
         <tr v-if="!rows.length">
@@ -57,29 +66,36 @@
 
     <footer class="page-foot">
       <span>共 {{ total }} 条开关站管理记录</span>
-      <span v-if="errorMessage" class="error-text">{{ errorMessage }}</span>
+      <span v-if="actionError" class="error-text">
+        {{ actionError }}
+        <button class="link" type="button" @click="reload">重新读取</button>
+      </span>
+      <span v-else-if="readError" class="error-text">{{ readError }}</span>
     </footer>
   </section>
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 
 import { request } from '@/api/client'
+import { availableActions, ENDPOINT, submitAction, type Row } from './actions'
 
-type Row = Record<string, string | number | null>
-
-const ENDPOINT = '/api/switchgear'
-const columns = ["设备编号", "设备名称", "电压等级", "所属电站", "分合状态", "操作许可", "上次操作日", "设备状态"]
-const actions = ["分闸操作", "合闸送电", "挂牌检修"]
-const statuses = ["合闸运行", "分闸备用", "检修挂牌"]
-const stats = [{"label": "合闸设备", "value": 0}, {"label": "分闸设备", "value": 0}, {"label": "检修设备", "value": 0}]
+const columns = ['设备编号', '设备名称', '电压等级', '所属电站', '分合状态', '操作许可', '上次操作日', '设备状态']
+const filterFields = columns.slice(0, 3)
 
 const rows = ref<Row[]>([])
 const total = ref(0)
-const errorMessage = ref('')
+const readError = ref('')
+const actionError = ref('')
+const busyId = ref<Row['id'] | null>(null)
 const filters = ref<Record<string, string>>({})
-const filterFields = columns.slice(0, 3)
+
+const stats = computed(() => [
+  { label: '合闸设备', value: rows.value.filter((row) => row.status === '合闸运行').length },
+  { label: '分闸设备', value: rows.value.filter((row) => row.status === '分闸备用').length },
+  { label: '检修设备', value: rows.value.filter((row) => row.status === '检修挂牌').length },
+])
 
 function resetFilters() {
   filters.value = {}
@@ -91,38 +107,36 @@ function exportRows() {
 }
 
 function openCreate() {
-  errorMessage.value = '开关设备登记入口尚未接入审批流'
+  readError.value = '开关设备登记入口尚未接入审批流'
 }
 
 async function runAction(action: string, row: Row) {
-  errorMessage.value = ''
-  try {
-    const response = await request(`${ENDPOINT}/${row.id}/actions`, {
-      method: 'POST',
-      body: JSON.stringify({ action }),
-    })
-    if (!response.ok) {
-      throw new Error('开关站管理动作未生效，请稍后重试')
-    }
-    await reload()
-  } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : '开关站管理操作失败'
+  actionError.value = ''
+  busyId.value = row.id
+  // 只提交读取页面时拿到的许可；失败时不改 rows，保留原来的可执行动作
+  const result = await submitAction(row.id, action, row['操作许可'])
+  busyId.value = null
+  if (!result.ok) {
+    actionError.value = result.message
+    return
   }
+  await reload()
 }
 
 async function reload() {
-  errorMessage.value = ''
-  const query = new URLSearchParams(filters.value as Record<string, string>).toString()
+  readError.value = ''
+  actionError.value = ''
+  const query = new URLSearchParams(filters.value).toString()
   try {
     const response = await request(`${ENDPOINT}?${query}`)
     if (!response.ok) {
-      throw new Error('开关设备列表读取失败')
+      throw new Error(`开关设备列表读取失败（HTTP ${response.status}）`)
     }
-    const payload = await response.json()
+    const payload = (await response.json()) as { items?: Row[]; total?: number }
     rows.value = payload.items ?? []
     total.value = payload.total ?? rows.value.length
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : '开关站管理列表读取失败'
+    readError.value = error instanceof Error ? error.message : '开关设备列表读取失败'
   }
 }
 

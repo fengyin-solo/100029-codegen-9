@@ -19,6 +19,9 @@ class ActionResult(BaseModel):
     ok: bool
     message: str
     entry: dict[str, Any] | None = None
+    # 机器可读的失败原因：stale_permit=操作许可过期，missing_permit=未带许可，
+    # invalid_action=动作非法，invalid_transition=当前状态不允许该动作，not_found=记录不存在
+    code: str | None = None
 
 
 class EntryPayload(BaseModel):

@@ -10,6 +10,7 @@ const Fault = () => import('@/views/fault/index.vue')
 const SparePart = () => import('@/views/spare_part/index.vue')
 const Transformer = () => import('@/views/transformer/index.vue')
 const Switchgear = () => import('@/views/switchgear/index.vue')
+const SwitchgearDetail = () => import('@/views/switchgear/detail.vue')
 const Meter = () => import('@/views/meter/index.vue')
 const Weather = () => import('@/views/weather/index.vue')
 const GridConnect = () => import('@/views/grid_connect/index.vue')
@@ -33,6 +34,7 @@ const router = createRouter({
     { path: '/spare_part', name: 'spare_part', component: SparePart },
     { path: '/transformer', name: 'transformer', component: Transformer },
     { path: '/switchgear', name: 'switchgear', component: Switchgear },
+    { path: '/switchgear/:id', name: 'switchgear-detail', component: SwitchgearDetail },
     { path: '/meter', name: 'meter', component: Meter },
     { path: '/weather', name: 'weather', component: Weather },
     { path: '/grid_connect', name: 'grid_connect', component: GridConnect },
