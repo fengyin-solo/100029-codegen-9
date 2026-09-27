@@ -18,6 +18,8 @@ class PageResult(BaseModel, Generic[T]):
 class ActionResult(BaseModel):
     ok: bool
     message: str
+    # 机器可读的失败原因，如 stale_permit（操作许可过期），前端据此提示重新读取
+    code: str | None = None
     entry: dict[str, Any] | None = None
 
 
